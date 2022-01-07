@@ -1,5 +1,6 @@
 from enum import Flag
 import os
+from re import L
 import time
 import numpy as np
 from numpy.core.defchararray import mod
@@ -16,8 +17,8 @@ tf.logging.set_verbosity(tf.logging.ERROR)  # Hide TF deprecation messages
 
 VERTICES = "VERTICES_FLAT"
 FACES = "FACES"
-EPOCH = 10
-CHECK_POINT = 5
+EPOCH = 10000
+CHECK_POINT = 5000
 CONTINUE_TRAINING = "CONTINUE_TRAINING"
 PREDICT = "PREDICT"
 VISUALIZE = "VISUALIZE"
@@ -350,18 +351,9 @@ if __name__ == "__main__":
                                                 binvox_path,
                                                 batch_size=1,
                                                 buffer_size=2)
-    # continue_training(target_dir,
-    #                   ckpt_dir,
-    #                   vertex_dataset,
-    #                   face_dataset,
-    #                   learning_rate=5e-4,
-    #                   training_step=2,
-    #                   check_step=1,
-    #                   epoch_remain=1,
-    #                   mode=PREDICT)
-    # print("Training done!")
-    visualize(target_dir,
-              ckpt_dir,
-              vertex_dataset,
-              face_dataset,
-              learning_rate=5e-4)
+    train(target_dir,
+          vertex_dataset,
+          face_dataset,
+          learning_rate=5e-4,
+          training_step=20,
+          check_step=2)
