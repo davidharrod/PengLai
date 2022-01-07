@@ -9,14 +9,14 @@ from pre_process import point_cloud_2_voxel as p2v
 from tensor2tensor.layers.common_layers import batch_dense
 import modules
 import data_utils
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 
 tf.logging.set_verbosity(tf.logging.ERROR)  # Hide TF deprecation messages
 
 VERTICES = "VERTICES_FLAT"
 FACES = "FACES"
 EPOCH = 10
-CHECK_POINT = 2
+CHECK_POINT = 5
 
 # Set tensorflow gpu configuration.
 tf_gpu_config = tf.ConfigProto(allow_soft_placement=True)
@@ -116,7 +116,7 @@ def _create_model(batch,
                   decoder_config,
                   quantization_bits=8,
                   max_sample_length=200,
-                  max_seq_length=500,
+                  max_seq_length=5000,
                   vertex_samples=None):
     """Return distribution predicted by the model, loss and samples."""
     if model_type == VERTICES:
@@ -198,10 +198,8 @@ def train(
         writer = tf.summary.FileWriter(writer_path, sess.graph)
         sess.run(tf.global_variables_initializer())
         for epoch in range(EPOCH):
-            # sess.run(tf.global_variables_initializer())
             for n in range(training_step):
                 if n % check_step == 0:
-                    sess.run((vertex_loss, face_loss))
                     summary = sess.run(merged)
                     writer.add_summary(summary, n + epoch * training_step)
                 sess.run((vertex_model_optim_op, face_model_optim_op))
@@ -252,7 +250,7 @@ def _test_create_model(obj_path, binvox_path):
                             model_type=FACES,
                             encoder_config=face_model_encoder_config,
                             decoder_config=face_model_decoder_config,
-                            max_seq_length=500,
+                            max_seq_length=5000,
                             vertex_samples=vertex_samples)
 
     print("=====================================")
@@ -269,12 +267,12 @@ if __name__ == "__main__":
     target_dir = "./log/"
     vertex_dataset, face_dataset = load_dataset(obj_path,
                                                 binvox_path,
-                                                batch_size=1,
-                                                buffer_size=2)
+                                                batch_size=10,
+                                                buffer_size=20)
     train(target_dir,
           vertex_dataset,
           face_dataset,
           learning_rate=5e-4,
-          training_step=2,
-          check_step=1)
+          training_step=500,
+          check_step=10)
     print("Training done!")
