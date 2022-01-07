@@ -3,6 +3,7 @@ import os
 import time
 import numpy as np
 from numpy.core.defchararray import mod
+from numpy.lib.npyio import save
 from pyntcloud.io import obj
 from sonnet.python.modules.util import NOT_SUPPORTED
 from pre_process import point_cloud_2_voxel as p2v
@@ -17,6 +18,8 @@ VERTICES = "VERTICES_FLAT"
 FACES = "FACES"
 EPOCH = 10
 CHECK_POINT = 5
+CONTINUE_TRAINING = "CONTINUE_TRAINING"
+PREDICT = "PREDICT"
 
 # Set tensorflow gpu configuration.
 tf_gpu_config = tf.ConfigProto(allow_soft_placement=True)
@@ -158,14 +161,7 @@ def _create_model(batch,
     return dist, model_loss, samples
 
 
-def train(
-    target_dir,
-    vertex_dataset,
-    face_dataset,
-    learning_rate,
-    training_step,
-    check_step,
-):
+def _setup_training(target_dir, vertex_dataset, face_dataset, learning_rate):
     # Prepare for training.
     vertex_batch = vertex_dataset.make_one_shot_iterator().get_next()
     face_batch = face_dataset.make_one_shot_iterator().get_next()
@@ -193,6 +189,20 @@ def train(
     tf.summary.scalar("vertex loss", vertex_loss)
     tf.summary.scalar("face loss", face_loss)
     merged = tf.summary.merge_all()
+    return vertex_model_optim_op, face_model_optim_op, writer_path, saver_path, saver, merged
+
+
+def train(
+    target_dir,
+    vertex_dataset,
+    face_dataset,
+    learning_rate,
+    training_step,
+    check_step,
+):
+    # Setup training.
+    vertex_model_optim_op, face_model_optim_op, writer_path, saver_path, saver, merged = _setup_training(
+        target_dir, vertex_dataset, face_dataset, learning_rate)
     # Training loop.
     with tf.Session(config=tf_gpu_config) as sess:
         writer = tf.summary.FileWriter(writer_path, sess.graph)
@@ -205,7 +215,36 @@ def train(
                 sess.run((vertex_model_optim_op, face_model_optim_op))
             if (epoch + 1) % CHECK_POINT == 0:
                 saver.save(sess,
-                           os.path.join(saver_path, "keypoint_model.ckpt"),
+                           os.path.join(saver_path, "model.ckpt"),
+                           global_step=epoch)
+    return None
+
+
+def continue_training(target_dir, ckpt_dir, vertex_dataset, face_dataset,
+                      learning_rate, training_step, check_step, epoch_remain,
+                      mode):
+    """This function can be used to continue training as well as test model on validation dataset."""
+    # Set up training.
+    vertex_model_optim_op, face_model_optim_op, writer_path, saver_path, saver, merged = _setup_training(
+        target_dir, vertex_dataset, face_dataset, learning_rate)
+    saver_restore = tf.train.Saver()
+    with tf.Session(config=tf_gpu_config) as sess:
+        # Load model.
+        saver_restore.restore(sess, tf.train.latest_checkpoint(ckpt_dir))
+        writer = tf.summary.FileWriter(writer_path, sess.graph)
+        # Training loop.
+        for epoch in range(epoch_remain):
+            for n in range(training_step):
+                if n % check_step == 0:
+                    summary = sess.run(merged)
+                    writer.add_summary(summary, n + epoch * training_step)
+                if mode == CONTINUE_TRAINING:
+                    sess.run((vertex_model_optim_op, face_model_optim_op))
+                else:
+                    pass
+            if (epoch + 1) % CHECK_POINT == 0:
+                saver.save(sess,
+                           os.path.join(saver_path, "model.ckpt"),
                            global_step=epoch)
     return None
 
@@ -265,14 +304,18 @@ if __name__ == "__main__":
     obj_path = "./dataset/obj/"
     binvox_path = "./dataset/binvox/"
     target_dir = "./log/"
+    ckpt_dir = "/home/yqs/dave/packages/PengLai/log/2022_01_07_10_07/ckpt_model"
     vertex_dataset, face_dataset = load_dataset(obj_path,
                                                 binvox_path,
-                                                batch_size=10,
-                                                buffer_size=20)
-    train(target_dir,
-          vertex_dataset,
-          face_dataset,
-          learning_rate=5e-4,
-          training_step=500,
-          check_step=10)
+                                                batch_size=1,
+                                                buffer_size=2)
+    continue_training(target_dir,
+                      ckpt_dir,
+                      vertex_dataset,
+                      face_dataset,
+                      learning_rate=5e-4,
+                      training_step=2,
+                      check_step=1,
+                      epoch_remain=1,
+                      mode=PREDICT)
     print("Training done!")
