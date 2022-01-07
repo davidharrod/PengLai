@@ -249,6 +249,10 @@ def continue_training(target_dir, ckpt_dir, vertex_dataset, face_dataset,
     return None
 
 
+def visualize():
+    return None
+
+
 def _test_load_data(obj_path, binvox_path):
     """Create dataset successfully"""
     _, ex = _load_data(obj_path, binvox_path)
