@@ -20,6 +20,7 @@ EPOCH = 10
 CHECK_POINT = 5
 CONTINUE_TRAINING = "CONTINUE_TRAINING"
 PREDICT = "PREDICT"
+VISUALIZE = "VISUALIZE"
 
 # Set tensorflow gpu configuration.
 tf_gpu_config = tf.ConfigProto(allow_soft_placement=True)
@@ -161,7 +162,11 @@ def _create_model(batch,
     return dist, model_loss, samples
 
 
-def _setup_training(target_dir, vertex_dataset, face_dataset, learning_rate):
+def _setup_training(target_dir,
+                    vertex_dataset,
+                    face_dataset,
+                    learning_rate,
+                    mode=CONTINUE_TRAINING):
     # Prepare for training.
     vertex_batch = vertex_dataset.make_one_shot_iterator().get_next()
     face_batch = face_dataset.make_one_shot_iterator().get_next()
@@ -170,11 +175,12 @@ def _setup_training(target_dir, vertex_dataset, face_dataset, learning_rate):
         model_type=VERTICES,
         encoder_config=vertex_model_encoder_config,
         decoder_config=vertex_model_decoder_config)
-    _, face_loss, _ = _create_model(face_batch,
-                                    model_type=FACES,
-                                    encoder_config=face_model_encoder_config,
-                                    decoder_config=face_model_decoder_config,
-                                    vertex_samples=vertex_samples)
+    _, face_loss, face_samples = _create_model(
+        face_batch,
+        model_type=FACES,
+        encoder_config=face_model_encoder_config,
+        decoder_config=face_model_decoder_config,
+        vertex_samples=vertex_samples)
     optimizer = tf.train.AdamOptimizer(learning_rate)
     vertex_model_optim_op = optimizer.minimize(vertex_loss)
     face_model_optim_op = optimizer.minimize(face_loss)
@@ -189,7 +195,14 @@ def _setup_training(target_dir, vertex_dataset, face_dataset, learning_rate):
     tf.summary.scalar("vertex loss", vertex_loss)
     tf.summary.scalar("face loss", face_loss)
     merged = tf.summary.merge_all()
-    return vertex_model_optim_op, face_model_optim_op, writer_path, saver_path, saver, merged
+    if mode == CONTINUE_TRAINING or mode == PREDICT:
+        return vertex_model_optim_op, face_model_optim_op, writer_path, saver_path, saver, merged
+    elif mode == VISUALIZE:
+        return vertex_samples, face_samples, vertex_batch
+    else:
+        raise AttributeError(
+            f"{mode} is not supported. Please try {CONTINUE_TRAINING}, {PREDICT} or {VISUALIZE} instead."
+        )
 
 
 def train(
@@ -249,7 +262,31 @@ def continue_training(target_dir, ckpt_dir, vertex_dataset, face_dataset,
     return None
 
 
-def visualize():
+def visualize(target_dir,
+              ckpt_dir,
+              vertex_dataset,
+              face_dataset,
+              learning_rate,
+              mode=VISUALIZE):
+    vertex_samples, face_samples, vertex_batch = _setup_training(
+        target_dir, vertex_dataset, face_dataset, learning_rate, mode=mode)
+    saver_restore = tf.train.Saver()
+    with tf.Session() as sess:
+        # Load model.
+        saver_restore.restore(sess, tf.train.latest_checkpoint(ckpt_dir))
+        vertex_samples_np, face_samples_np, _ = sess.run(
+            (vertex_samples, face_samples, vertex_batch))
+        mesh_list = []
+        mesh_list.append({
+            'vertices':
+            vertex_samples_np['vertices'][0]
+            [:vertex_samples_np['num_vertices'][0]],
+            'faces':
+            data_utils.unflatten_faces(
+                face_samples_np['faces'][0]
+                [:face_samples_np['num_face_indices'][0]])
+        })
+        data_utils.plot_meshes(mesh_list, ax_lims=0.5)
     return None
 
 
@@ -313,13 +350,18 @@ if __name__ == "__main__":
                                                 binvox_path,
                                                 batch_size=1,
                                                 buffer_size=2)
-    continue_training(target_dir,
-                      ckpt_dir,
-                      vertex_dataset,
-                      face_dataset,
-                      learning_rate=5e-4,
-                      training_step=2,
-                      check_step=1,
-                      epoch_remain=1,
-                      mode=PREDICT)
-    print("Training done!")
+    # continue_training(target_dir,
+    #                   ckpt_dir,
+    #                   vertex_dataset,
+    #                   face_dataset,
+    #                   learning_rate=5e-4,
+    #                   training_step=2,
+    #                   check_step=1,
+    #                   epoch_remain=1,
+    #                   mode=PREDICT)
+    # print("Training done!")
+    visualize(target_dir,
+              ckpt_dir,
+              vertex_dataset,
+              face_dataset,
+              learning_rate=5e-4)
