@@ -17,10 +17,10 @@ tf.logging.set_verbosity(tf.logging.ERROR)  # Hide TF deprecation messages
 
 VERTICES = "VERTICES_FLAT"
 FACES = "FACES"
-EPOCH = 10000
-CHECK_POINT = 5000
+EPOCH = 4
+CHECK_POINT = 1
+TRAIN_FIRST_TIME = "TRAIN_FIRST_TIME"
 CONTINUE_TRAINING = "CONTINUE_TRAINING"
-PREDICT = "PREDICT"
 VISUALIZE = "VISUALIZE"
 
 # Set tensorflow gpu configuration.
@@ -163,11 +163,11 @@ def _create_model(batch,
     return dist, model_loss, samples
 
 
-def _setup_training(target_dir,
-                    vertex_dataset,
+def _setup_training(vertex_dataset,
                     face_dataset,
                     learning_rate,
-                    mode=CONTINUE_TRAINING):
+                    target_dir=None,
+                    mode=None):
     # Prepare for training.
     vertex_batch = vertex_dataset.make_one_shot_iterator().get_next()
     face_batch = face_dataset.make_one_shot_iterator().get_next()
@@ -185,38 +185,38 @@ def _setup_training(target_dir,
     optimizer = tf.train.AdamOptimizer(learning_rate)
     vertex_model_optim_op = optimizer.minimize(vertex_loss)
     face_model_optim_op = optimizer.minimize(face_loss)
-    # Create directory for saving log and model.
-    current_time = time.strftime("%Y_%m_%d_%H_%M", time.localtime())
-    writer_path = p2v._try_2_create_directory(
-        target_dir, f"{current_time}/tensorboard/graphs")
-    saver_path = p2v._try_2_create_directory(target_dir,
-                                             f"{current_time}/ckpt_model")
     # Set saver and summary.
     saver = tf.train.Saver()
     tf.summary.scalar("vertex loss", vertex_loss)
     tf.summary.scalar("face loss", face_loss)
     merged = tf.summary.merge_all()
-    if mode == CONTINUE_TRAINING or mode == PREDICT:
+    if mode == TRAIN_FIRST_TIME or mode == CONTINUE_TRAINING:
+        if mode == TRAIN_FIRST_TIME:
+            # Create directory for saving log and model.
+            current_time = time.strftime("%Y_%m_%d_%H_%M", time.localtime())
+            writer_path = p2v._try_2_create_directory(
+                target_dir, f"{current_time}/tensorboard/graphs")
+            saver_path = p2v._try_2_create_directory(
+                target_dir, f"{current_time}/ckpt_model")
         return vertex_model_optim_op, face_model_optim_op, writer_path, saver_path, saver, merged
     elif mode == VISUALIZE:
         return vertex_samples, face_samples, vertex_batch
     else:
         raise AttributeError(
-            f"{mode} is not supported. Please try {CONTINUE_TRAINING}, {PREDICT} or {VISUALIZE} instead."
+            f"{mode} is not supported. Please try {CONTINUE_TRAINING} or {VISUALIZE} instead."
         )
 
 
-def train(
-    target_dir,
-    vertex_dataset,
-    face_dataset,
-    learning_rate,
-    training_step,
-    check_step,
-):
+def train(target_dir,
+          vertex_dataset,
+          face_dataset,
+          learning_rate,
+          training_step,
+          check_step,
+          mode=TRAIN_FIRST_TIME):
     # Setup training.
     vertex_model_optim_op, face_model_optim_op, writer_path, saver_path, saver, merged = _setup_training(
-        target_dir, vertex_dataset, face_dataset, learning_rate)
+        vertex_dataset, face_dataset, learning_rate, target_dir, mode)
     # Training loop.
     with tf.Session(config=tf_gpu_config) as sess:
         writer = tf.summary.FileWriter(writer_path, sess.graph)
@@ -234,13 +234,12 @@ def train(
     return None
 
 
-def continue_training(target_dir, ckpt_dir, vertex_dataset, face_dataset,
-                      learning_rate, training_step, check_step, epoch_remain,
-                      mode):
+def continue_training(ckpt_dir, vertex_dataset, face_dataset, learning_rate,
+                      training_step, check_step, epoch_remain, mode):
     """This function can be used to continue training as well as test model on validation dataset."""
     # Set up training.
     vertex_model_optim_op, face_model_optim_op, writer_path, saver_path, saver, merged = _setup_training(
-        target_dir, vertex_dataset, face_dataset, learning_rate)
+        vertex_dataset, face_dataset, learning_rate)
     saver_restore = tf.train.Saver()
     with tf.Session(config=tf_gpu_config) as sess:
         # Load model.
@@ -263,14 +262,13 @@ def continue_training(target_dir, ckpt_dir, vertex_dataset, face_dataset,
     return None
 
 
-def visualize(target_dir,
-              ckpt_dir,
+def visualize(ckpt_dir,
               vertex_dataset,
               face_dataset,
-              learning_rate,
+              learning_rate=5e-4,
               mode=VISUALIZE):
     vertex_samples, face_samples, vertex_batch = _setup_training(
-        target_dir, vertex_dataset, face_dataset, learning_rate, mode=mode)
+        vertex_dataset, face_dataset, learning_rate, mode=mode)
     saver_restore = tf.train.Saver()
     with tf.Session() as sess:
         # Load model.
@@ -343,17 +341,21 @@ def _test_create_model(obj_path, binvox_path):
 
 
 if __name__ == "__main__":
-    obj_path = "./dataset/obj/"
-    binvox_path = "./dataset/binvox/"
+    obj_path = "/home/yqs/dave/data/polygen_data/train/poly"
+    binvox_path = "/home/yqs/dave/data/polygen_data/train/binvox"
     target_dir = "./log/"
-    ckpt_dir = "/home/yqs/dave/packages/PengLai/log/2022_01_07_10_07/ckpt_model"
+    ckpt_dir = "/home/yqs/dave/packages/PengLai/log/2022_01_07_18_34/ckpt_model"
     vertex_dataset, face_dataset = load_dataset(obj_path,
                                                 binvox_path,
                                                 batch_size=1,
-                                                buffer_size=2)
+                                                buffer_size=100)
+    # Train.
     train(target_dir,
           vertex_dataset,
           face_dataset,
           learning_rate=5e-4,
-          training_step=20,
+          training_step=42408,
           check_step=2)
+
+    # Visualize.
+    # visualize(ckpt_dir, vertex_dataset, face_dataset)
