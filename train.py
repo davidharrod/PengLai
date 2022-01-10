@@ -96,7 +96,7 @@ def _make_model_dataset(dataset,
             f"There are no {model_type} model in this package. Please try VERTEX or FACE instead."
         )
     dataset = dataset.repeat()
-    dataset = dataset.shuffle(20).padded_batch(
+    dataset = dataset.shuffle(1000).padded_batch(
         batch_size=batch_size, padded_shapes=dataset.output_shapes)
     dataset = dataset.prefetch(buffer_size=buffer_size)
     return dataset  # batch是一个迭代器
@@ -347,15 +347,15 @@ if __name__ == "__main__":
     ckpt_dir = "/home/yqs/dave/packages/PengLai/log/2022_01_07_18_34/ckpt_model"
     vertex_dataset, face_dataset = load_dataset(obj_path,
                                                 binvox_path,
-                                                batch_size=1,
-                                                buffer_size=100)
+                                                batch_size=25,
+                                                buffer_size=25)
     # Train.
     train(target_dir,
           vertex_dataset,
           face_dataset,
           learning_rate=5e-4,
-          training_step=42408,
-          check_step=2)
+          training_step=int(1e5),
+          check_step=5)
 
     # Visualize.
     # visualize(ckpt_dir, vertex_dataset, face_dataset)

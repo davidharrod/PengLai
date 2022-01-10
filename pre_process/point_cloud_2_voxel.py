@@ -64,7 +64,7 @@ def _filter_file(file):
 
 def _filter_files(file_list):
     filtered_file_list = []
-    for i, file in enumerate(file_list):
+    for file in file_list:
         if _get_suffix(file) == OBJ:
             if _filter_file(file):
                 filtered_file_list.append(file)
